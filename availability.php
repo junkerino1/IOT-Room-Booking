@@ -1,5 +1,9 @@
 <?php
 
+if (!isset($conn)) {
+    require_once __DIR__ . '/bootstrap.php';
+}
+
 $selectedDate = $_GET['date'] ?? date('Y-m-d');
 $today = date('Y-m-d');
 $nowTs = time();
