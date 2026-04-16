@@ -2,10 +2,10 @@
 -- version 5.2.1
 -- https://www.phpmyadmin.net/
 --
--- Host: 127.0.0.1
--- Generation Time: Mar 30, 2026 at 08:44 AM
--- Server version: 10.4.32-MariaDB
--- PHP Version: 8.2.12
+-- Host: 1Panel-mysql-kiuI
+-- Generation Time: Apr 16, 2026 at 01:49 PM
+-- Server version: 8.4.2
+-- PHP Version: 8.2.25
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -28,29 +28,18 @@ SET time_zone = "+00:00";
 --
 
 CREATE TABLE `bookings` (
-  `booking_id` int(11) NOT NULL,
-  `student_id` int(11) NOT NULL,
-  `room_id` int(11) NOT NULL,
-  `timeslot_id` int(11) NOT NULL,
+  `booking_id` int NOT NULL,
+  `student_id` int NOT NULL,
+  `room_id` int NOT NULL,
+  `timeslot_id` int NOT NULL,
   `booking_date` date NOT NULL,
-  `status` enum('Active','Expired') DEFAULT 'Active',
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `status` enum('Active','Expired') COLLATE utf8mb4_unicode_ci DEFAULT 'Active',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `checked_in_at` datetime DEFAULT NULL,
   `checked_out_at` datetime DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Dumping data for table `bookings`
---
 
-INSERT INTO `bookings` (`booking_id`, `student_id`, `room_id`, `timeslot_id`, `booking_date`, `status`, `created_at`, `checked_in_at`, `checked_out_at`) VALUES
-(20, 1, 1, 1, '2026-03-30', 'Expired', '2026-03-30 03:18:21', NULL, NULL),
-(21, 1, 1, 2, '2026-03-30', 'Expired', '2026-03-30 03:19:08', NULL, NULL),
-(22, 1, 1, 3, '2026-03-30', 'Expired', '2026-03-30 03:19:08', NULL, NULL),
-(23, 1, 2, 1, '2026-03-30', 'Expired', '2026-03-30 03:37:08', NULL, NULL),
-(24, 1, 3, 1, '2026-03-30', 'Expired', '2026-03-30 03:38:59', NULL, NULL),
-(25, 1, 4, 1, '2026-03-30', 'Expired', '2026-03-30 03:39:48', NULL, NULL),
-(26, 1, 1, 4, '2026-03-30', 'Expired', '2026-03-30 04:14:49', NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -59,9 +48,9 @@ INSERT INTO `bookings` (`booking_id`, `student_id`, `room_id`, `timeslot_id`, `b
 --
 
 CREATE TABLE `rooms` (
-  `room_id` int(11) NOT NULL,
-  `room_number` varchar(10) NOT NULL,
-  `capacity` int(11) DEFAULT 1
+  `room_id` int NOT NULL,
+  `room_number` varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `capacity` int DEFAULT '1'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
@@ -69,10 +58,7 @@ CREATE TABLE `rooms` (
 --
 
 INSERT INTO `rooms` (`room_id`, `room_number`, `capacity`) VALUES
-(1, 'Room A', 3),
-(2, 'Room B', 3),
-(3, 'Room C', 6),
-(4, 'Room D', 6);
+(1, 'A1', 3);
 
 -- --------------------------------------------------------
 
@@ -81,24 +67,36 @@ INSERT INTO `rooms` (`room_id`, `room_number`, `capacity`) VALUES
 --
 
 CREATE TABLE `sensor_logs` (
-  `log_id` int(11) NOT NULL,
-  `room_id` int(3) NOT NULL,
+  `log_id` int NOT NULL,
+  `room_id` int NOT NULL,
   `temperature` float DEFAULT NULL,
   `humidity` float DEFAULT NULL,
   `distance` float DEFAULT NULL,
-  `system_status` varchar(50) NOT NULL,
+  `system_status` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
   `logged_at` datetime DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- --------------------------------------------------------
+
 --
--- Dumping data for table `sensor_logs`
+-- Table structure for table `admins`
 --
 
-INSERT INTO `sensor_logs` (`log_id`, `room_id`, `temperature`, `humidity`, `distance`, `system_status`, `logged_at`) VALUES
-(8, 4, 28.5, 60, 120, 'Active', '2026-03-30 14:39:00'),
-(9, 3, 28.5, 60, 120, 'Active', '2026-03-30 14:39:23'),
-(10, 2, 28.5, 60, 120, 'Active', '2026-03-30 14:39:31'),
-(11, 1, 28.5, 60, 120, 'Active', '2026-03-30 14:39:34');
+CREATE TABLE `admins` (
+  `admin_id` int NOT NULL,
+  `admin_number` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `password` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `admins`
+--
+
+INSERT INTO `admins` (`admin_id`, `admin_number`, `name`, `password`, `is_active`, `created_at`) VALUES
+(1, 'ADM001', 'System Admin', 'admin12345', 1, '2026-04-16 00:00:00');
 
 -- --------------------------------------------------------
 
@@ -107,18 +105,15 @@ INSERT INTO `sensor_logs` (`log_id`, `room_id`, `temperature`, `humidity`, `dist
 --
 
 CREATE TABLE `students` (
-  `student_id` int(11) NOT NULL,
-  `name` varchar(100) NOT NULL,
-  `student_number` varchar(20) NOT NULL,
-  `password` varchar(60) NOT NULL
+  `student_id` int NOT NULL,
+  `name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `student_number` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `password` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `is_suspended` tinyint(1) NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Dumping data for table `students`
---
 
-INSERT INTO `students` (`student_id`, `name`, `student_number`, `password`) VALUES
-(1, 'Ooi Jun Kang', '2509855', 'Junk#0512');
 
 -- --------------------------------------------------------
 
@@ -127,7 +122,7 @@ INSERT INTO `students` (`student_id`, `name`, `student_number`, `password`) VALU
 --
 
 CREATE TABLE `timeslots` (
-  `timeslot_id` int(11) NOT NULL,
+  `timeslot_id` int NOT NULL,
   `start_time` time NOT NULL,
   `end_time` time NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -158,6 +153,13 @@ ALTER TABLE `bookings`
   ADD UNIQUE KEY `unique_room_time` (`room_id`,`timeslot_id`,`booking_date`),
   ADD KEY `fk_student` (`student_id`),
   ADD KEY `fk_timeslot` (`timeslot_id`);
+
+--
+-- Indexes for table `admins`
+--
+ALTER TABLE `admins`
+  ADD PRIMARY KEY (`admin_id`),
+  ADD UNIQUE KEY `admin_number` (`admin_number`);
 
 --
 -- Indexes for table `rooms`
@@ -192,31 +194,37 @@ ALTER TABLE `timeslots`
 -- AUTO_INCREMENT for table `bookings`
 --
 ALTER TABLE `bookings`
-  MODIFY `booking_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=27;
+  MODIFY `booking_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+
+--
+-- AUTO_INCREMENT for table `admins`
+--
+ALTER TABLE `admins`
+  MODIFY `admin_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `rooms`
 --
 ALTER TABLE `rooms`
-  MODIFY `room_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `room_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `sensor_logs`
 --
 ALTER TABLE `sensor_logs`
-  MODIFY `log_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
+  MODIFY `log_id` int NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `students`
 --
 ALTER TABLE `students`
-  MODIFY `student_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `student_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `timeslots`
 --
 ALTER TABLE `timeslots`
-  MODIFY `timeslot_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
+  MODIFY `timeslot_id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
 
 --
 -- Constraints for dumped tables

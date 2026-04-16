@@ -1,4 +1,13 @@
 <?php
+
+if (!isset($conn)) {
+    require_once __DIR__ . '/bootstrap.php';
+}
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 $errorMessage = '';
 $stmt = $conn->prepare('SELECT * FROM rooms');
 $stmt->execute();
@@ -77,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $conn->commit();
-            header('Location: /booking/my-bookings');
+            header('Location: ' . app_url('booking/my-bookings'));
             exit;
 
         } catch (Exception $e) {

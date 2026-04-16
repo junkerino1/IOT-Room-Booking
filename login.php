@@ -1,41 +1,107 @@
 <?php
 
-require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/bootstrap.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+$role = (string)($_SESSION['role'] ?? '');
+if ($role === 'admin') {
+    header('Location: ' . app_url('dashboard'));
+    exit;
+}
+if ($role === 'student') {
+    header('Location: ' . app_url('availability'));
+    exit;
+}
+
 $message = '';
+$successMessage = '';
+
+if (($_GET['registered'] ?? '') === '1') {
+    $successMessage = 'Sign up successful. You can now sign in.';
+}
+
+if (($_GET['suspended'] ?? '') === '1') {
+    $message = 'Your student account is suspended. Please contact an admin.';
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $student_number = trim($_POST['student_number'] ?? '');
+    $loginId = strtoupper(trim((string)($_POST['student_number'] ?? '')));
     $password = (string)($_POST['password'] ?? '');
 
-    if ($student_number === '' || $password === '') {
-        $message = 'Please enter your student number and password.';
+    if ($loginId === '' || $password === '') {
+        $message = 'Please enter your ID and password.';
     } else {
-        $stmt = $conn->prepare('SELECT * FROM students WHERE student_number = ? LIMIT 1');
-        $stmt->bind_param('s', $student_number);
-        $stmt->execute();
-        $stmt->bind_result($db_student_id, $db_student_name, $db_student_number, $db_password);
+        $authenticated = false;
 
-        if ($stmt->fetch()) {
-            $isValid = ((string)$db_password === $password);
+        $adminStmt = $conn->prepare('SELECT admin_id, name, admin_number, password, COALESCE(is_active, 1) AS is_active FROM admins WHERE admin_number = ? LIMIT 1');
+        if ($adminStmt) {
+            $adminStmt->bind_param('s', $loginId);
+            $adminStmt->execute();
+            $adminStmt->bind_result($dbAdminId, $dbAdminName, $dbAdminNumber, $dbAdminPassword, $dbAdminActive);
 
-            if ($isValid) {
-                session_regenerate_id(true);
-                $_SESSION['student_number'] = $db_student_number;
-                $_SESSION['student_id'] = $db_student_id;
-                $_SESSION['name'] = $db_student_name;
+            if ($adminStmt->fetch()) {
+                if ((int)$dbAdminActive !== 1) {
+                    $message = 'This admin account is inactive.';
+                } elseif (app_password_matches($password, (string)$dbAdminPassword)) {
+                    session_regenerate_id(true);
+                    $_SESSION = [];
+                    $_SESSION['role'] = 'admin';
+                    $_SESSION['admin_id'] = (int)$dbAdminId;
+                    $_SESSION['admin_name'] = (string)$dbAdminName;
+                    $_SESSION['admin_number'] = (string)$dbAdminNumber;
+                    $_SESSION['name'] = (string)$dbAdminName;
 
-                header('Location: /availability');
-                exit;
+                    header('Location: ' . app_url('dashboard'));
+                    exit;
+                } else {
+                    $message = 'Invalid ID or password.';
+                }
+
+                $authenticated = true;
+            }
+
+            $adminStmt->close();
+        }
+
+        if (!$authenticated) {
+            $studentStmt = $conn->prepare('SELECT student_id, name, student_number, password, COALESCE(is_suspended, 0) AS is_suspended FROM students WHERE student_number = ? LIMIT 1');
+
+            if ($studentStmt) {
+                $studentStmt->bind_param('s', $loginId);
+                $studentStmt->execute();
+                $studentStmt->bind_result($dbStudentId, $dbStudentName, $dbStudentNumber, $dbStudentPassword, $dbStudentSuspended);
+
+                if ($studentStmt->fetch()) {
+                    if ((int)$dbStudentSuspended === 1) {
+                        $message = 'Your student account is suspended. Please contact an admin.';
+                    } elseif (app_password_matches($password, (string)$dbStudentPassword)) {
+                        session_regenerate_id(true);
+                        $_SESSION = [];
+                        $_SESSION['role'] = 'student';
+                        $_SESSION['student_number'] = (string)$dbStudentNumber;
+                        $_SESSION['student_id'] = (int)$dbStudentId;
+                        $_SESSION['student_name'] = (string)$dbStudentName;
+                        $_SESSION['name'] = (string)$dbStudentName;
+
+                        header('Location: ' . app_url('availability'));
+                        exit;
+                    } else {
+                        $message = 'Invalid ID or password.';
+                    }
+
+                    $authenticated = true;
+                }
+
+                $studentStmt->close();
             }
         }
 
-        $message = 'Invalid student ID or password.';
-        $stmt->close();
+        if (!$authenticated && $message === '') {
+            $message = 'Invalid ID or password.';
+        }
     }
 }
 
@@ -48,8 +114,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <i data-lucide="door-open" class="text-white w-8 h-8"></i>
             </div>
             <h1 class="text-2xl font-bold text-slate-900">Room Booking System</h1>
-            <p class="text-slate-500 mt-2">Sign in to your student account</p>
+            <p class="text-slate-500 mt-2">Sign in as student or admin</p>
         </div>
+
+        <?php if (!empty($successMessage)): ?>
+            <div class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                <?php echo htmlspecialchars($successMessage, ENT_QUOTES, 'UTF-8'); ?>
+            </div>
+        <?php endif; ?>
 
         <?php if (!empty($message)): ?>
             <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -70,5 +142,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 Sign In
             </button>
         </form>
+
+        <p class="text-center text-sm text-slate-500 mt-6">
+            New student?
+            <a href="<?php echo htmlspecialchars(app_url('signup'), ENT_QUOTES, 'UTF-8'); ?>" class="text-blue-600 hover:text-blue-700 font-semibold">Create account</a>
+        </p>
     </div>
 </div>

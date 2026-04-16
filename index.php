@@ -1,20 +1,20 @@
 <?php
-date_default_timezone_set('Asia/Kuala_Lumpur');
 ob_start();
-require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/bootstrap.php';
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
-$request = $_SERVER['REQUEST_URI'];
 $view = 'availability'; // Default view
 $pageTitle = 'Room Availability';
 $activePage = '';
 
 // Extract the path (e.g., /booking/new -> booking/new)
-$path = trim(parse_url($request, PHP_URL_PATH), '/');
+$path = app_route_path();
 
 // API endpoints should bypass the normal web routing (login redirects/layout)
-$apiEndpoints = ['report-data', 'parse-nfc', 'take-picture', 'unlock-door', 'check-out'];
+$apiEndpoints = ['report-data', 'parse-nfc', 'take-picture', 'ongoing-booking', 'unlock-door', 'check-out'];
 if ($path === 'api.php' || in_array($path, $apiEndpoints, true) || (strpos($path, 'api/') === 0)) {
     define('API_REQUEST', true);
     require __DIR__ . '/api.php';
@@ -30,12 +30,24 @@ switch ($path) {
             setcookie(session_name(), '', time() - 42000, $params['path'], $params['domain'], $params['secure'], $params['httponly']);
         }
         session_destroy();
-        header('Location: /login');
+        header('Location: ' . app_url('login'));
         exit;
+
+    case '':
+    case 'availability':
+        $view = 'availability';
+        $pageTitle = 'Room Availability';
+        $activePage = 'availability';
+        break;
 
     case 'login':
         $view = 'login';
         $pageTitle = 'Sign In';
+        break;
+
+    case 'signup':
+        $view = 'signup';
+        $pageTitle = 'Student Sign Up';
         break;
 
     case 'booking/new':
@@ -51,13 +63,13 @@ switch ($path) {
         break;
 
     case 'dashboard':
-        $view = 'dashboard';
+        $view = 'admin_dashboard';
         $pageTitle = 'Dashboard';
         $activePage = 'admin';
         break;
 
     case 'admin/dashboard':
-        $view = 'dashboard';
+        $view = 'admin_dashboard';
         $pageTitle = 'Admin Dashboard';
         $activePage = 'admin';
         break;
@@ -69,11 +81,71 @@ switch ($path) {
         break;
 }
 
-// Require login for booking pages
-if (!defined('API_REQUEST')) {
-    if (in_array($view, ['availability', 'booking', 'booked'], true) && empty($_SESSION['student_number'])) {
-        header('Location: /login');
+if (!isset($_SESSION['role']) && !empty($_SESSION['student_number'])) {
+    $_SESSION['role'] = 'student';
+}
+
+if (!function_exists('performLogoutAndRedirect')) {
+    function performLogoutAndRedirect(string $target): void
+    {
+        $_SESSION = [];
+        if (ini_get('session.use_cookies')) {
+            $params = session_get_cookie_params();
+            setcookie(session_name(), '', time() - 42000, $params['path'], $params['domain'], $params['secure'], $params['httponly']);
+        }
+        session_destroy();
+        header('Location: ' . app_url($target));
         exit;
+    }
+}
+
+// Require proper role for each page
+if (!defined('API_REQUEST')) {
+    $currentRole = (string)($_SESSION['role'] ?? '');
+    $publicViews = ['login', 'signup'];
+    $studentViews = ['availability', 'booking', 'booked'];
+    $adminViews = ['admin_dashboard'];
+
+    if ($currentRole === '' && !in_array($view, $publicViews, true)) {
+        header('Location: ' . app_url('login'));
+        exit;
+    }
+
+    if ($currentRole === 'student' && in_array($view, $publicViews, true)) {
+        header('Location: ' . app_url('availability'));
+        exit;
+    }
+
+    if ($currentRole === 'admin' && in_array($view, $publicViews, true)) {
+        header('Location: ' . app_url('dashboard'));
+        exit;
+    }
+
+    if (in_array($view, $studentViews, true) && $currentRole !== 'student') {
+        header('Location: ' . app_url('dashboard'));
+        exit;
+    }
+
+    if (in_array($view, $adminViews, true) && $currentRole !== 'admin') {
+        header('Location: ' . app_url('availability'));
+        exit;
+    }
+
+    // Enforce suspended flag every request so already-logged-in suspended students are removed.
+    if ($currentRole === 'student' && !empty($_SESSION['student_id'])) {
+        $studentId = (int)$_SESSION['student_id'];
+        $suspendStmt = $conn->prepare('SELECT COALESCE(is_suspended, 0) AS is_suspended FROM students WHERE student_id = ? LIMIT 1');
+
+        if ($suspendStmt) {
+            $suspendStmt->bind_param('i', $studentId);
+            $suspendStmt->execute();
+            $row = $suspendStmt->get_result()->fetch_assoc();
+            $suspendStmt->close();
+
+            if ((int)($row['is_suspended'] ?? 0) === 1) {
+                performLogoutAndRedirect('login?suspended=1');
+            }
+        }
     }
 }
 
@@ -120,8 +192,8 @@ if (!defined('API_REQUEST')) {
 
 <body class="bg-slate-50 text-slate-900">
 
-    <?php if ($view === 'login'): ?>
-        <?php include __DIR__ . '/login.php'; ?>
+    <?php if (in_array($view, ['login', 'signup'], true)): ?>
+        <?php include __DIR__ . "/$view.php"; ?>
     <?php else: ?>
         <div class="min-h-screen flex flex-col md:flex-row">
             <?php include __DIR__ . '/partials/sidebar.php'; ?>

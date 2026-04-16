@@ -1,5 +1,9 @@
 <?php
 
+if (!isset($conn)) {
+    require_once __DIR__ . '/bootstrap.php';
+}
+
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
