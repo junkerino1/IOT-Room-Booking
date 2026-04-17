@@ -1,11 +1,13 @@
 <?php
 
 if (!isset($conn)) {
-    require_once __DIR__ . '/db.php';
+    require_once __DIR__ . '/bootstrap.php';
 }
+
 if (!function_exists('app_url')) {
     require_once __DIR__ . '/bootstrap.php';
 }
+
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -15,11 +17,8 @@ if (($_SESSION['role'] ?? '') !== 'admin') {
     exit;
 }
 
-$noticeType = '';
-$noticeText = '';
-
-$studentFrom = (string)($_GET['student_from'] ?? date('Y-m-d', strtotime('-1 month')));
-$studentTo = (string)($_GET['student_to'] ?? date('Y-m-d'));
+$defaultSensorFrom = date('Y-m-d', strtotime('-7 days'));
+$defaultSensorTo = date('Y-m-d');
 
 $normalizeDate = static function (string $value, string $fallback): string {
     $dt = DateTime::createFromFormat('Y-m-d', $value);
@@ -30,222 +29,13 @@ $normalizeDate = static function (string $value, string $fallback): string {
     return $fallback;
 };
 
-$studentFrom = $normalizeDate($studentFrom, date('Y-m-d', strtotime('-1 month')));
-$studentTo = $normalizeDate($studentTo, date('Y-m-d'));
+$sensorFrom = $normalizeDate((string)($_GET['sensor_from'] ?? $defaultSensorFrom), $defaultSensorFrom);
+$sensorTo = $normalizeDate((string)($_GET['sensor_to'] ?? $defaultSensorTo), $defaultSensorTo);
 
-if ($studentFrom > $studentTo) {
-    $tmp = $studentFrom;
-    $studentFrom = $studentTo;
-    $studentTo = $tmp;
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = (string)($_POST['action'] ?? '');
-
-    if ($action === 'toggle_student_suspend') {
-        $studentId = (int)($_POST['student_id'] ?? 0);
-        $suspendValue = ((int)($_POST['suspend'] ?? 0) === 1) ? 1 : 0;
-
-        if ($studentId <= 0) {
-            $noticeType = 'error';
-            $noticeText = 'Invalid student selected.';
-        } else {
-            $stmt = $conn->prepare('UPDATE students SET is_suspended = ? WHERE student_id = ?');
-            if ($stmt) {
-                $stmt->bind_param('ii', $suspendValue, $studentId);
-                $stmt->execute();
-                $stmt->close();
-                $noticeType = 'success';
-                $noticeText = $suspendValue === 1 ? 'Student suspended successfully.' : 'Student unsuspended successfully.';
-            } else {
-                $noticeType = 'error';
-                $noticeText = 'Unable to update student status.';
-            }
-        }
-    } elseif ($action === 'add_student') {
-        $studentNumber = strtoupper(trim((string)($_POST['student_number'] ?? '')));
-        $studentPassword = (string)($_POST['student_password'] ?? '');
-
-        if ($studentNumber === '' || $studentPassword === '') {
-            $noticeType = 'error';
-            $noticeText = 'Please provide student ID and password.';
-        } elseif (strlen($studentPassword) < 6) {
-            $noticeType = 'error';
-            $noticeText = 'Student password must be at least 6 characters.';
-        } else {
-            $checkStmt = $conn->prepare('SELECT student_id FROM students WHERE student_number = ? LIMIT 1');
-            if (!$checkStmt) {
-                $noticeType = 'error';
-                $noticeText = 'Unable to validate student ID.';
-            } else {
-                $checkStmt->bind_param('s', $studentNumber);
-                $checkStmt->execute();
-                $exists = $checkStmt->get_result()->fetch_assoc();
-                $checkStmt->close();
-
-                if ($exists) {
-                    $noticeType = 'error';
-                    $noticeText = 'Student ID already exists.';
-                } else {
-                    $displayName = $studentNumber;
-                    $passwordHash = app_password_hash($studentPassword);
-                    $insertStmt = $conn->prepare('INSERT INTO students (name, student_number, password, is_suspended) VALUES (?, ?, ?, 0)');
-
-                    if ($insertStmt) {
-                        $insertStmt->bind_param('sss', $displayName, $studentNumber, $passwordHash);
-                        $insertStmt->execute();
-                        $insertStmt->close();
-                        $noticeType = 'success';
-                        $noticeText = 'Student account created successfully.';
-                    } else {
-                        $noticeType = 'error';
-                        $noticeText = 'Unable to create student account.';
-                    }
-                }
-            }
-        }
-    } elseif ($action === 'add_admin') {
-        $adminNumber = strtoupper(trim((string)($_POST['admin_number'] ?? '')));
-        $adminName = trim((string)($_POST['admin_name'] ?? ''));
-        $adminPassword = (string)($_POST['admin_password'] ?? '');
-
-        if ($adminNumber === '' || $adminName === '' || $adminPassword === '') {
-            $noticeType = 'error';
-            $noticeText = 'Please complete all add admin fields.';
-        } elseif (strlen($adminPassword) < 6) {
-            $noticeType = 'error';
-            $noticeText = 'Admin password must be at least 6 characters.';
-        } else {
-            $checkStmt = $conn->prepare('SELECT admin_id FROM admins WHERE admin_number = ? LIMIT 1');
-            if (!$checkStmt) {
-                $noticeType = 'error';
-                $noticeText = 'Unable to validate admin ID.';
-            } else {
-                $checkStmt->bind_param('s', $adminNumber);
-                $checkStmt->execute();
-                $existingAdmin = $checkStmt->get_result()->fetch_assoc();
-                $checkStmt->close();
-
-                if ($existingAdmin) {
-                    $noticeType = 'error';
-                    $noticeText = 'Admin ID already exists.';
-                } else {
-                    $passwordHash = app_password_hash($adminPassword);
-                    $insertStmt = $conn->prepare('INSERT INTO admins (admin_number, name, password, is_active, created_at) VALUES (?, ?, ?, 1, NOW())');
-                    if ($insertStmt) {
-                        $insertStmt->bind_param('sss', $adminNumber, $adminName, $passwordHash);
-                        $insertStmt->execute();
-                        $insertStmt->close();
-                        $noticeType = 'success';
-                        $noticeText = 'Admin created successfully.';
-                    } else {
-                        $noticeType = 'error';
-                        $noticeText = 'Unable to create admin account.';
-                    }
-                }
-            }
-        }
-    } elseif ($action === 'update_admin') {
-        $targetAdminId = (int)($_POST['admin_id'] ?? 0);
-        $adminNumber = strtoupper(trim((string)($_POST['admin_number'] ?? '')));
-        $adminName = trim((string)($_POST['admin_name'] ?? ''));
-        $adminPassword = (string)($_POST['admin_password'] ?? '');
-        $adminIsActive = ((int)($_POST['is_active'] ?? 1) === 1) ? 1 : 0;
-
-        if ($targetAdminId <= 0 || $adminNumber === '' || $adminName === '') {
-            $noticeType = 'error';
-            $noticeText = 'Please provide valid admin details for update.';
-        } else {
-            $dupStmt = $conn->prepare('SELECT admin_id FROM admins WHERE admin_number = ? AND admin_id != ? LIMIT 1');
-            $duplicate = false;
-            if ($dupStmt) {
-                $dupStmt->bind_param('si', $adminNumber, $targetAdminId);
-                $dupStmt->execute();
-                $duplicate = (bool)$dupStmt->get_result()->fetch_assoc();
-                $dupStmt->close();
-            }
-
-            if ($duplicate) {
-                $noticeType = 'error';
-                $noticeText = 'Another admin already uses this admin ID.';
-            } else {
-                if ($adminPassword !== '') {
-                    if (strlen($adminPassword) < 6) {
-                        $noticeType = 'error';
-                        $noticeText = 'New password must be at least 6 characters.';
-                    } else {
-                        $passwordHash = app_password_hash($adminPassword);
-                        $updateStmt = $conn->prepare('UPDATE admins SET admin_number = ?, name = ?, password = ?, is_active = ? WHERE admin_id = ?');
-                        if ($updateStmt) {
-                            $updateStmt->bind_param('sssii', $adminNumber, $adminName, $passwordHash, $adminIsActive, $targetAdminId);
-                            $updateStmt->execute();
-                            $updateStmt->close();
-                            $noticeType = 'success';
-                            $noticeText = 'Admin updated successfully.';
-                        } else {
-                            $noticeType = 'error';
-                            $noticeText = 'Unable to update admin record.';
-                        }
-                    }
-                } else {
-                    $updateStmt = $conn->prepare('UPDATE admins SET admin_number = ?, name = ?, is_active = ? WHERE admin_id = ?');
-                    if ($updateStmt) {
-                        $updateStmt->bind_param('ssii', $adminNumber, $adminName, $adminIsActive, $targetAdminId);
-                        $updateStmt->execute();
-                        $updateStmt->close();
-                        $noticeType = 'success';
-                        $noticeText = 'Admin updated successfully.';
-                    } else {
-                        $noticeType = 'error';
-                        $noticeText = 'Unable to update admin record.';
-                    }
-                }
-
-                if ($noticeType === 'success' && (int)($_SESSION['admin_id'] ?? 0) === $targetAdminId) {
-                    $_SESSION['admin_number'] = $adminNumber;
-                    $_SESSION['admin_name'] = $adminName;
-                    $_SESSION['name'] = $adminName;
-                }
-            }
-        }
-    } elseif ($action === 'delete_admin') {
-        $targetAdminId = (int)($_POST['admin_id'] ?? 0);
-        $currentAdminId = (int)($_SESSION['admin_id'] ?? 0);
-
-        if ($targetAdminId <= 0) {
-            $noticeType = 'error';
-            $noticeText = 'Invalid admin selected.';
-        } elseif ($targetAdminId === $currentAdminId) {
-            $noticeType = 'error';
-            $noticeText = 'You cannot delete your own admin account.';
-        } else {
-            $countStmt = $conn->prepare('SELECT COUNT(*) AS total_admins FROM admins');
-            $adminCount = 0;
-            if ($countStmt) {
-                $countStmt->execute();
-                $countRow = $countStmt->get_result()->fetch_assoc();
-                $countStmt->close();
-                $adminCount = (int)($countRow['total_admins'] ?? 0);
-            }
-
-            if ($adminCount <= 1) {
-                $noticeType = 'error';
-                $noticeText = 'At least one admin account must remain.';
-            } else {
-                $deleteStmt = $conn->prepare('DELETE FROM admins WHERE admin_id = ?');
-                if ($deleteStmt) {
-                    $deleteStmt->bind_param('i', $targetAdminId);
-                    $deleteStmt->execute();
-                    $deleteStmt->close();
-                    $noticeType = 'success';
-                    $noticeText = 'Admin deleted successfully.';
-                } else {
-                    $noticeType = 'error';
-                    $noticeText = 'Unable to delete admin account.';
-                }
-            }
-        }
-    }
+if ($sensorFrom > $sensorTo) {
+    $tmp = $sensorFrom;
+    $sensorFrom = $sensorTo;
+    $sensorTo = $tmp;
 }
 
 $weekStart = date('Y-m-d', strtotime('monday this week'));
@@ -333,50 +123,98 @@ if ($sensorStmt) {
     $sensorStmt->close();
 }
 
-$students = [];
-$studentsSql =
-    'SELECT '
-    . 's.student_id, '
-    . 's.name, '
-    . 's.student_number, '
-    . 'COALESCE(s.is_suspended, 0) AS is_suspended, '
-    . 'COUNT(b.booking_id) AS total_bookings, '
-    . 'COALESCE(SUM(CASE WHEN b.booking_date BETWEEN ? AND ? THEN 1 ELSE 0 END), 0) AS range_bookings '
-    . 'FROM students s '
-    . 'LEFT JOIN bookings b ON b.student_id = s.student_id '
-    . 'GROUP BY s.student_id, s.name, s.student_number, s.is_suspended '
-    . 'ORDER BY s.student_number ASC';
+$roomHistorySeries = [];
+$rangeSampleCount = 0;
+$rangeStart = $sensorFrom . ' 00:00:00';
+$rangeEnd = $sensorTo . ' 23:59:59';
 
-$studentsStmt = $conn->prepare($studentsSql);
-if ($studentsStmt) {
-    $studentsStmt->bind_param('ss', $studentFrom, $studentTo);
-    $studentsStmt->execute();
-    $studentsResult = $studentsStmt->get_result();
-    if ($studentsResult) {
-        $students = $studentsResult->fetch_all(MYSQLI_ASSOC);
+$roomsStmt = $conn->prepare('SELECT room_id, room_number FROM rooms ORDER BY room_number ASC');
+if ($roomsStmt) {
+    $roomsStmt->execute();
+    $roomsResult = $roomsStmt->get_result();
+    $rooms = $roomsResult ? $roomsResult->fetch_all(MYSQLI_ASSOC) : [];
+
+    $historyStmt = $conn->prepare(
+        'SELECT temperature, humidity, distance, logged_at '
+        . 'FROM sensor_logs '
+        . 'WHERE room_id = ? AND logged_at BETWEEN ? AND ? '
+        . 'ORDER BY logged_at ASC'
+    );
+
+    if ($historyStmt) {
+        foreach ($rooms as $roomRow) {
+            $roomId = (int)($roomRow['room_id'] ?? 0);
+            if ($roomId <= 0) {
+                continue;
+            }
+
+            $historyStmt->bind_param('iss', $roomId, $rangeStart, $rangeEnd);
+            $historyStmt->execute();
+            $historyResult = $historyStmt->get_result();
+            $historyRows = $historyResult ? $historyResult->fetch_all(MYSQLI_ASSOC) : [];
+
+            $labels = [];
+            $temperatures = [];
+            $humidities = [];
+            $distances = [];
+
+            foreach ($historyRows as $historyRow) {
+                $labels[] = (string)($historyRow['logged_at'] ?? '');
+                $temperatures[] = is_numeric($historyRow['temperature'] ?? null)
+                    ? round((float)$historyRow['temperature'], 2)
+                    : null;
+                $humidities[] = is_numeric($historyRow['humidity'] ?? null)
+                    ? round((float)$historyRow['humidity'], 2)
+                    : null;
+                $distances[] = is_numeric($historyRow['distance'] ?? null)
+                    ? round((float)$historyRow['distance'], 2)
+                    : null;
+            }
+
+            $rangeSampleCount += count($labels);
+
+            $roomHistorySeries[] = [
+                'room_id' => $roomId,
+                'room_number' => (string)($roomRow['room_number'] ?? ('Room ' . $roomId)),
+                'labels' => $labels,
+                'temperature' => $temperatures,
+                'humidity' => $humidities,
+                'distance' => $distances,
+            ];
+        }
+
+        $historyStmt->close();
     }
-    $studentsStmt->close();
+
+    $roomsStmt->close();
 }
 
-$admins = [];
-$adminsStmt = $conn->prepare('SELECT admin_id, admin_number, name, COALESCE(is_active, 1) AS is_active, created_at FROM admins ORDER BY admin_id ASC');
-if ($adminsStmt) {
-    $adminsStmt->execute();
-    $adminsResult = $adminsStmt->get_result();
-    if ($adminsResult) {
-        $admins = $adminsResult->fetch_all(MYSQLI_ASSOC);
-    }
-    $adminsStmt->close();
+$roomHistoryJson = json_encode($roomHistorySeries, JSON_UNESCAPED_SLASHES);
+if ($roomHistoryJson === false) {
+    $roomHistoryJson = '[]';
 }
 
 ?>
 
-<div id="content-admin" class="space-y-6">
-    <?php if ($noticeText !== ''): ?>
-        <div class="rounded-xl border px-4 py-3 text-sm <?php echo $noticeType === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'; ?>">
-            <?php echo htmlspecialchars($noticeText, ENT_QUOTES, 'UTF-8'); ?>
+<div class="space-y-6">
+    <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="p-6 border-b border-slate-100 bg-slate-50/30 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div>
+                <h3 class="font-bold text-lg text-slate-800">Admin Management</h3>
+                <p class="text-sm text-slate-500 mt-1">Manage student access and admin accounts from dedicated pages.</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <a href="<?php echo htmlspecialchars(app_url('admin/students'), ENT_QUOTES, 'UTF-8'); ?>" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors">
+                    <i data-lucide="users" class="w-4 h-4"></i>
+                    Manage Students
+                </a>
+                <a href="<?php echo htmlspecialchars(app_url('admin/admins'), ENT_QUOTES, 'UTF-8'); ?>" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold transition-colors">
+                    <i data-lucide="user-cog" class="w-4 h-4"></i>
+                    Manage Admins
+                </a>
+            </div>
         </div>
-    <?php endif; ?>
+    </section>
 
     <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <div class="p-6 border-b border-slate-100 bg-slate-50/30">
@@ -392,11 +230,11 @@ if ($adminsStmt) {
             </div>
             <div class="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
                 <p class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Average Temperature</p>
-                <p class="text-2xl font-bold text-slate-800 mt-1"><?php echo $avgTemp === null ? '—' : number_format($avgTemp, 2) . '°C'; ?></p>
+                <p class="text-2xl font-bold text-slate-800 mt-1"><?php echo $avgTemp === null ? '-' : number_format($avgTemp, 2) . '°C'; ?></p>
             </div>
             <div class="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
                 <p class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Average Humidity</p>
-                <p class="text-2xl font-bold text-slate-800 mt-1"><?php echo $avgHumidity === null ? '—' : number_format($avgHumidity, 2) . '%'; ?></p>
+                <p class="text-2xl font-bold text-slate-800 mt-1"><?php echo $avgHumidity === null ? '-' : number_format($avgHumidity, 2) . '%'; ?></p>
             </div>
             <div class="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
                 <p class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Sensor Log Samples</p>
@@ -425,8 +263,8 @@ if ($adminsStmt) {
                     $status = (string)($row['system_status'] ?? 'Unknown');
                     $loggedAt = (string)($row['logged_at'] ?? '');
 
-                    $tempText = ($temp === null || $temp === '') ? '—' : number_format((float)$temp, 1) . '°C';
-                    $humText = ($hum === null || $hum === '') ? '—' : number_format((float)$hum, 1) . '%';
+                    $tempText = ($temp === null || $temp === '') ? '-' : number_format((float)$temp, 1) . '°C';
+                    $humText = ($hum === null || $hum === '') ? '-' : number_format((float)$hum, 1) . '%';
 
                     $statusClass = 'bg-slate-100 text-slate-700';
                     if ($status === 'Active') {
@@ -465,6 +303,55 @@ if ($adminsStmt) {
                     </div>
                 <?php endforeach; ?>
             <?php endif; ?>
+        </div>
+    </section>
+
+    <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="p-6 border-b border-slate-100 bg-slate-50/30 flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4">
+            <div>
+                <h3 class="font-bold text-lg text-slate-800">Room Sensor History</h3>
+                <p class="text-sm text-slate-500 mt-1">View past temperature, humidity, and distance logs in a scrollable chart by room and date range.</p>
+            </div>
+
+            <form method="GET" class="flex flex-wrap items-end gap-2">
+                <div>
+                    <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">From</label>
+                    <input type="date" name="sensor_from" value="<?php echo htmlspecialchars($sensorFrom, ENT_QUOTES, 'UTF-8'); ?>" class="px-3 py-2 rounded-lg border border-slate-200 text-sm">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">To</label>
+                    <input type="date" name="sensor_to" value="<?php echo htmlspecialchars($sensorTo, ENT_QUOTES, 'UTF-8'); ?>" class="px-3 py-2 rounded-lg border border-slate-200 text-sm">
+                </div>
+                <button type="submit" class="px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-semibold hover:bg-slate-900">Apply</button>
+            </form>
+        </div>
+
+        <div class="p-6">
+            <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-4">
+                <div class="w-full lg:w-80">
+                    <label for="sensor-trend-room" class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Select Room</label>
+                    <select id="sensor-trend-room" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300"></select>
+                </div>
+                <div class="text-xs text-slate-500">
+                    <p>Range: <?php echo htmlspecialchars($sensorFrom . ' to ' . $sensorTo, ENT_QUOTES, 'UTF-8'); ?></p>
+                    <p>Total samples in range: <?php echo number_format($rangeSampleCount); ?></p>
+                </div>
+            </div>
+
+            <div id="sensor-trend-empty" class="hidden rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500"></div>
+
+            <div id="sensor-trend-scroll" class="hidden overflow-x-auto pb-2">
+                <div id="sensor-trend-canvas-wrap" class="h-[340px] min-w-[960px]">
+                    <canvas id="sensor-trend-chart"></canvas>
+                </div>
+            </div>
+
+            <div class="mt-4 flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-wider">
+                <span class="px-2.5 py-1 rounded-full bg-cyan-50 text-cyan-700 border border-cyan-100">Temperature</span>
+                <span class="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-100">Humidity</span>
+                <span class="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100">Distance</span>
+                <span class="px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200">Scrollable timeline</span>
+            </div>
         </div>
     </section>
 
@@ -525,177 +412,253 @@ if ($adminsStmt) {
         </div>
     </section>
 
-    <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div class="p-6 border-b border-slate-100 bg-slate-50/30">
-            <h3 class="font-bold text-lg text-slate-800">Add Student</h3>
-            <p class="text-sm text-slate-500 mt-1">Create student accounts using student card ID and password.</p>
-        </div>
-
-        <div class="p-6">
-            <form method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <input type="hidden" name="action" value="add_student">
-                <div>
-                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Student ID</label>
-                    <input type="text" name="student_number" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200" placeholder="e.g. 25WMR09840">
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Password</label>
-                    <input type="password" name="student_password" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200" placeholder="At least 6 characters">
-                </div>
-                <div class="md:col-span-2 flex items-end">
-                    <button type="submit" class="w-full md:w-auto px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-colors">Add Student</button>
-                </div>
-            </form>
-        </div>
-    </section>
-
-    <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div class="p-6 border-b border-slate-100 bg-slate-50/30 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-                <h3 class="font-bold text-lg text-slate-800">Manage Students</h3>
-                <p class="text-sm text-slate-500 mt-1">Suspend student login and view booking totals for all data or a date range.</p>
-            </div>
-            <form method="GET" class="flex flex-wrap items-end gap-2">
-                <div>
-                    <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">From</label>
-                    <input type="date" name="student_from" value="<?php echo htmlspecialchars($studentFrom, ENT_QUOTES, 'UTF-8'); ?>" class="px-3 py-2 rounded-lg border border-slate-200 text-sm">
-                </div>
-                <div>
-                    <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">To</label>
-                    <input type="date" name="student_to" value="<?php echo htmlspecialchars($studentTo, ENT_QUOTES, 'UTF-8'); ?>" class="px-3 py-2 rounded-lg border border-slate-200 text-sm">
-                </div>
-                <button type="submit" class="px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-semibold hover:bg-slate-900">Apply</button>
-            </form>
-        </div>
-
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm text-left">
-                <thead>
-                    <tr class="bg-slate-50/50">
-                        <th class="p-4 font-semibold text-slate-600 border-b border-slate-100">Student ID</th>
-                        <th class="p-4 font-semibold text-slate-600 border-b border-slate-100">Name</th>
-                        <th class="p-4 font-semibold text-slate-600 border-b border-slate-100">Total Bookings</th>
-                        <th class="p-4 font-semibold text-slate-600 border-b border-slate-100">Range Bookings</th>
-                        <th class="p-4 font-semibold text-slate-600 border-b border-slate-100">Status</th>
-                        <th class="p-4 font-semibold text-slate-600 border-b border-slate-100">Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($students)): ?>
-                        <tr>
-                            <td colspan="6" class="p-4 text-slate-500">No students found.</td>
-                        </tr>
-                    <?php else: ?>
-                        <?php foreach ($students as $student): ?>
-                            <?php
-                            $isSuspended = (int)($student['is_suspended'] ?? 0) === 1;
-                            ?>
-                            <tr class="border-b border-slate-100 hover:bg-slate-50/40">
-                                <td class="p-4 font-mono text-xs"><?php echo htmlspecialchars((string)($student['student_number'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td class="p-4 text-slate-700"><?php echo htmlspecialchars((string)($student['name'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td class="p-4 text-slate-700"><?php echo (int)($student['total_bookings'] ?? 0); ?></td>
-                                <td class="p-4 text-slate-700"><?php echo (int)($student['range_bookings'] ?? 0); ?></td>
-                                <td class="p-4">
-                                    <span class="text-xs font-semibold uppercase tracking-wider <?php echo $isSuspended ? 'text-red-600' : 'text-emerald-600'; ?>">
-                                        <?php echo $isSuspended ? 'Suspended' : 'Active'; ?>
-                                    </span>
-                                </td>
-                                <td class="p-4">
-                                    <form method="POST" class="inline">
-                                        <input type="hidden" name="action" value="toggle_student_suspend">
-                                        <input type="hidden" name="student_id" value="<?php echo (int)($student['student_id'] ?? 0); ?>">
-                                        <input type="hidden" name="suspend" value="<?php echo $isSuspended ? '0' : '1'; ?>">
-                                        <button type="submit" class="px-3 py-1.5 rounded-lg text-xs font-semibold <?php echo $isSuspended ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-red-100 text-red-700 hover:bg-red-200'; ?> transition-colors">
-                                            <?php echo $isSuspended ? 'Unsuspend' : 'Suspend'; ?>
-                                        </button>
-                                    </form>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-    </section>
-
-    <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div class="p-6 border-b border-slate-100 bg-slate-50/30">
-            <h3 class="font-bold text-lg text-slate-800">Manage Admins</h3>
-            <p class="text-sm text-slate-500 mt-1">Add, update, activate/deactivate, and delete admin accounts.</p>
-        </div>
-
-        <div class="p-6 border-b border-slate-100">
-            <form method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <input type="hidden" name="action" value="add_admin">
-                <div>
-                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Admin ID</label>
-                    <input type="text" name="admin_number" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200" placeholder="e.g. ADM001">
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Name</label>
-                    <input type="text" name="admin_name" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200" placeholder="Admin name">
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Password</label>
-                    <input type="password" name="admin_password" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200" placeholder="At least 6 characters">
-                </div>
-                <div class="flex items-end">
-                    <button type="submit" class="w-full md:w-auto px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-colors">Add Admin</button>
-                </div>
-            </form>
-        </div>
-
-        <div class="p-6 space-y-4">
-            <?php if (empty($admins)): ?>
-                <div class="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-sm text-slate-500 text-center">
-                    No admin accounts found.
-                </div>
-            <?php else: ?>
-                <?php foreach ($admins as $admin): ?>
-                    <div class="rounded-xl border border-slate-200 p-4">
-                        <form method="POST" class="grid grid-cols-1 md:grid-cols-5 gap-3">
-                            <input type="hidden" name="action" value="update_admin">
-                            <input type="hidden" name="admin_id" value="<?php echo (int)($admin['admin_id'] ?? 0); ?>">
-
-                            <div>
-                                <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Admin ID</label>
-                                <input type="text" name="admin_number" value="<?php echo htmlspecialchars((string)($admin['admin_number'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" required class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Name</label>
-                                <input type="text" name="admin_name" value="<?php echo htmlspecialchars((string)($admin['name'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" required class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">New Password</label>
-                                <input type="password" name="admin_password" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" placeholder="Leave blank to keep">
-                            </div>
-                            <div>
-                                <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Status</label>
-                                <select name="is_active" class="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm">
-                                    <option value="1" <?php echo ((int)($admin['is_active'] ?? 1) === 1) ? 'selected' : ''; ?>>Active</option>
-                                    <option value="0" <?php echo ((int)($admin['is_active'] ?? 1) === 0) ? 'selected' : ''; ?>>Inactive</option>
-                                </select>
-                            </div>
-                            <div class="flex items-end">
-                                <button type="submit" class="w-full px-3 py-2 rounded-lg bg-slate-800 text-white text-sm font-semibold hover:bg-slate-900">Update</button>
-                            </div>
-                        </form>
-
-                        <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
-                            <p class="text-xs text-slate-500">Created: <?php echo htmlspecialchars((string)($admin['created_at'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></p>
-                            <form method="POST" onsubmit="return confirm('Delete this admin account?');">
-                                <input type="hidden" name="action" value="delete_admin">
-                                <input type="hidden" name="admin_id" value="<?php echo (int)($admin['admin_id'] ?? 0); ?>">
-                                <button type="submit" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200 transition-colors">Delete</button>
-                            </form>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
-            <?php endif; ?>
-        </div>
-    </section>
-
+    <script id="room-history-series" type="application/json"><?php echo htmlspecialchars($roomHistoryJson, ENT_NOQUOTES, 'UTF-8'); ?></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const dataNode = document.getElementById('room-history-series');
+            const roomSelect = document.getElementById('sensor-trend-room');
+            const emptyState = document.getElementById('sensor-trend-empty');
+            const scrollWrapper = document.getElementById('sensor-trend-scroll');
+            const canvasWrapper = document.getElementById('sensor-trend-canvas-wrap');
+            const canvas = document.getElementById('sensor-trend-chart');
+
+            if (!dataNode || !roomSelect || !emptyState || !scrollWrapper || !canvasWrapper || !canvas) {
+                console.error('One or more chart DOM elements not found. ID sensor-trend-chart:', !!canvas);
+                return;
+            }
+
+            let series = [];
+            try {
+                series = JSON.parse(dataNode.textContent || '[]');
+            } catch (err) {
+                series = [];
+            }
+
+            if (!Array.isArray(series) || series.length === 0) {
+                roomSelect.disabled = true;
+                emptyState.textContent = 'No room data is available yet.';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            const formatTimestamp = function(rawTs) {
+                if (typeof rawTs !== 'string' || rawTs === '') {
+                    return '-';
+                }
+
+                const ts = new Date(rawTs.replace(' ', 'T'));
+                if (Number.isNaN(ts.getTime())) {
+                    return rawTs;
+                }
+
+                return ts.toLocaleString([], {
+                    month: 'short',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false,
+                });
+            };
+
+            const normalizeNumbers = function(values) {
+                if (!Array.isArray(values)) {
+                    return [];
+                }
+
+                return values.map(function(value) {
+                    if (typeof value === 'number') {
+                        return Number.isFinite(value) ? value : null;
+                    }
+
+                    if (value === null || value === undefined || value === '') {
+                        return null;
+                    }
+
+                    const parsed = Number(value);
+                    return Number.isFinite(parsed) ? parsed : null;
+                });
+            };
+
+            let trendChart = null;
+
+            const setEmptyState = function(message) {
+                emptyState.textContent = message;
+                emptyState.classList.remove('hidden');
+                scrollWrapper.classList.add('hidden');
+            };
+
+            const showChart = function() {
+                emptyState.classList.add('hidden');
+                scrollWrapper.classList.remove('hidden');
+            };
+
+            const drawRoom = function(roomId) {
+                const room = series.find(function(entry) {
+                    return String(entry.room_id) === String(roomId);
+                });
+
+                if (!room) {
+                    if (trendChart) {
+                        trendChart.destroy();
+                        trendChart = null;
+                    }
+                    setEmptyState('No room selected.');
+                    return;
+                }
+
+                const labels = Array.isArray(room.labels) ? room.labels.map(formatTimestamp) : [];
+                const temperature = normalizeNumbers(room.temperature);
+                const humidity = normalizeNumbers(room.humidity);
+                const distance = normalizeNumbers(room.distance);
+
+                if (labels.length === 0) {
+                    if (trendChart) {
+                        trendChart.destroy();
+                        trendChart = null;
+                    }
+                    setEmptyState('No sensor logs found for this room in the selected date range.');
+                    return;
+                }
+
+                showChart();
+
+                const points = Math.max(labels.length, 1);
+                // Cap the width to prevent browser WebGL context crash (max 16384px in Chrome)
+                const safeWidth = Math.min(Math.max(960, points * 70), 12000);
+                canvasWrapper.style.minWidth = safeWidth + 'px';
+
+                if (trendChart) {
+                    trendChart.destroy();
+                }
+
+                trendChart = new Chart(canvas, {
+                    type: 'line',
+                    data: {
+                        labels,
+                        datasets: [
+                            {
+                                label: 'Temperature (°C)',
+                                data: temperature,
+                                borderColor: '#0891b2',
+                                backgroundColor: 'rgba(8, 145, 178, 0.12)',
+                                borderWidth: 2,
+                                pointRadius: 2,
+                                spanGaps: true,
+                                tension: 0.35,
+                                yAxisID: 'y',
+                            },
+                            {
+                                label: 'Humidity (%)',
+                                data: humidity,
+                                borderColor: '#2563eb',
+                                backgroundColor: 'rgba(37, 99, 235, 0.12)',
+                                borderWidth: 2,
+                                pointRadius: 2,
+                                spanGaps: true,
+                                tension: 0.35,
+                                yAxisID: 'y1',
+                            },
+                            {
+                                label: 'Distance (cm)',
+                                data: distance,
+                                borderColor: '#d97706',
+                                backgroundColor: 'rgba(217, 119, 6, 0.12)',
+                                borderWidth: 2,
+                                pointRadius: 2,
+                                spanGaps: true,
+                                tension: 0.35,
+                                yAxisID: 'y2',
+                            },
+                        ],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        },
+                        plugins: {
+                            legend: {
+                                labels: {
+                                    usePointStyle: true,
+                                    boxWidth: 10,
+                                },
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    title: function(items) {
+                                        return items[0] ? items[0].label : '';
+                                    },
+                                },
+                            },
+                        },
+                        scales: {
+                            x: {
+                                ticks: {
+                                    maxRotation: 0,
+                                    autoSkip: true,
+                                    maxTicksLimit: 12,
+                                },
+                                grid: {
+                                    color: 'rgba(148, 163, 184, 0.12)',
+                                },
+                            },
+                            y: {
+                                position: 'left',
+                                title: {
+                                    display: true,
+                                    text: 'Temp (°C)',
+                                },
+                                grid: {
+                                    color: 'rgba(148, 163, 184, 0.12)',
+                                },
+                            },
+                            y1: {
+                                position: 'right',
+                                title: {
+                                    display: true,
+                                    text: 'Humidity (%)',
+                                },
+                                grid: {
+                                    drawOnChartArea: false,
+                                },
+                            },
+                            y2: {
+                                position: 'right',
+                                title: {
+                                    display: true,
+                                    text: 'Distance (cm)',
+                                },
+                                grid: {
+                                    drawOnChartArea: false,
+                                },
+                            },
+                        },
+                    },
+                });
+            };
+
+            roomSelect.innerHTML = '';
+
+            series.forEach(function(room, index) {
+                const option = document.createElement('option');
+                option.value = String(room.room_id);
+                option.textContent = room.room_number + ' (' + (Array.isArray(room.labels) ? room.labels.length : 0) + ' logs)';
+                if (index === 0) {
+                    option.selected = true;
+                }
+                roomSelect.appendChild(option);
+            });
+
+            roomSelect.addEventListener('change', function(event) {
+                drawRoom(event.target.value);
+            });
+
+            drawRoom(roomSelect.value);
+        });
+
         async function handleRoomAction(action, btnElement, roomLabel) {
             let originalContent = '';
             if (btnElement) {

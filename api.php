@@ -85,14 +85,16 @@ function handleParseNfc(mysqli $conn, array $body): void
         s.student_number,
         s.name AS student_name,
         sub.start_time,
-        sub.end_time
+        sub.end_time,
+        sub.checked_out_at
     FROM (
         SELECT
             b.student_id,
             b.room_id,
             b.booking_date,
             MIN(ts.start_time) AS start_time,
-            MAX(ts.end_time)   AS end_time
+            MAX(ts.end_time)   AS end_time,
+            MAX(b.checked_out_at) AS checked_out_at
         FROM bookings b
         JOIN timeslots ts ON ts.timeslot_id = b.timeslot_id
         WHERE b.room_id      = ?
@@ -117,6 +119,16 @@ function handleParseNfc(mysqli $conn, array $body): void
         return;
     }
 
+    if (!empty($booking['checked_out_at'])) {
+        echo json_encode([
+            'status' => 403,
+            'is_valid' => false,
+            'message' => 'Booking already checked out. Room access is no longer allowed.',
+            'student_id' => $studentNumber,
+        ]);
+        return;
+    }
+
     // Check In Student if the checked_in_at is null
     $checkInStmt = $conn->prepare("
         UPDATE bookings b
@@ -124,6 +136,7 @@ function handleParseNfc(mysqli $conn, array $body): void
         SET b.checked_in_at = NOW()
         WHERE b.room_id = ? AND b.booking_date = ? AND s.student_number = ?
             AND b.checked_in_at IS NULL
+            AND b.checked_out_at IS NULL
     ");
     $checkInStmt->bind_param('iss', $roomId, $today, $studentNumber);
     $checkInStmt->execute();
@@ -200,6 +213,7 @@ function handleOngoingBooking(mysqli $conn, array $body): void
     JOIN timeslots ts ON ts.timeslot_id = b.timeslot_id
     WHERE b.room_id = ?
       AND b.booking_date = ?
+            AND b.checked_out_at IS NULL
     GROUP BY b.room_id, r.room_number, s.student_id, s.student_number, s.name, b.booking_date
     HAVING ? BETWEEN MIN(ts.start_time) AND MAX(ts.end_time)
     ORDER BY MIN(ts.start_time) ASC

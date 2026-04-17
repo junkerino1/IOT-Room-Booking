@@ -64,14 +64,26 @@ switch ($path) {
 
     case 'dashboard':
         $view = 'admin_dashboard';
-        $pageTitle = 'Dashboard';
-        $activePage = 'admin';
+        $pageTitle = 'Admin Dashboard';
+        $activePage = 'admin-dashboard';
         break;
 
     case 'admin/dashboard':
         $view = 'admin_dashboard';
         $pageTitle = 'Admin Dashboard';
-        $activePage = 'admin';
+        $activePage = 'admin-dashboard';
+        break;
+
+    case 'admin/students':
+        $view = 'admin_students';
+        $pageTitle = 'Manage Students';
+        $activePage = 'admin-students';
+        break;
+
+    case 'admin/admins':
+        $view = 'admin_admins';
+        $pageTitle = 'Manage Admins';
+        $activePage = 'admin-admins';
         break;
 
     default:
@@ -104,7 +116,7 @@ if (!defined('API_REQUEST')) {
     $currentRole = (string)($_SESSION['role'] ?? '');
     $publicViews = ['login', 'signup'];
     $studentViews = ['availability', 'booking', 'booked'];
-    $adminViews = ['admin_dashboard'];
+    $adminViews = ['admin_dashboard', 'admin_students', 'admin_admins'];
 
     if ($currentRole === '' && !in_array($view, $publicViews, true)) {
         header('Location: ' . app_url('login'));

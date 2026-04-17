@@ -29,9 +29,19 @@ $displayId = $isAdmin
         </div>
         <div id="nav-items" class="space-y-1">
             <?php if ($isAdmin): ?>
-                <a href="<?= htmlspecialchars(app_url('dashboard'), ENT_QUOTES, 'UTF-8') ?>" class="sidebar-item w-full flex items-center gap-3 px-6 py-3 text-slate-600 hover:bg-slate-50 transition-all <?= ($activePage == 'admin') ? 'active' : '' ?>">
+                <a href="<?= htmlspecialchars(app_url('dashboard'), ENT_QUOTES, 'UTF-8') ?>" class="sidebar-item w-full flex items-center gap-3 px-6 py-3 text-slate-600 hover:bg-slate-50 transition-all <?= ($activePage == 'admin-dashboard') ? 'active' : '' ?>">
                     <i data-lucide="shield-check" class="w-5 h-5"></i>
                     <span class="font-medium">Dashboard</span>
+                </a>
+
+                <a href="<?= htmlspecialchars(app_url('admin/students'), ENT_QUOTES, 'UTF-8') ?>" class="sidebar-item w-full flex items-center gap-3 px-6 py-3 text-slate-600 hover:bg-slate-50 transition-all <?= ($activePage == 'admin-students') ? 'active' : '' ?>">
+                    <i data-lucide="users" class="w-5 h-5"></i>
+                    <span class="font-medium">Manage Students</span>
+                </a>
+
+                <a href="<?= htmlspecialchars(app_url('admin/admins'), ENT_QUOTES, 'UTF-8') ?>" class="sidebar-item w-full flex items-center gap-3 px-6 py-3 text-slate-600 hover:bg-slate-50 transition-all <?= ($activePage == 'admin-admins') ? 'active' : '' ?>">
+                    <i data-lucide="user-cog" class="w-5 h-5"></i>
+                    <span class="font-medium">Manage Admins</span>
                 </a>
             <?php else: ?>
                 <a href="<?= htmlspecialchars(app_url('availability'), ENT_QUOTES, 'UTF-8') ?>" class="sidebar-item w-full flex items-center gap-3 px-6 py-3 text-slate-600 hover:bg-slate-50 transition-all <?= ($activePage == 'availability') ? 'active' : '' ?>">
