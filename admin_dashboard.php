@@ -415,7 +415,7 @@ if ($roomHistoryJson === false) {
     <script id="room-history-series" type="application/json"><?php echo htmlspecialchars($roomHistoryJson, ENT_NOQUOTES, 'UTF-8'); ?></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script>
-        (function() {
+        document.addEventListener('DOMContentLoaded', function() {
             const dataNode = document.getElementById('room-history-series');
             const roomSelect = document.getElementById('sensor-trend-room');
             const emptyState = document.getElementById('sensor-trend-empty');
@@ -424,6 +424,7 @@ if ($roomHistoryJson === false) {
             const canvas = document.getElementById('sensor-trend-chart');
 
             if (!dataNode || !roomSelect || !emptyState || !scrollWrapper || !canvasWrapper || !canvas) {
+                console.error('One or more chart DOM elements not found. ID sensor-trend-chart:', !!canvas);
                 return;
             }
 
@@ -523,7 +524,9 @@ if ($roomHistoryJson === false) {
                 showChart();
 
                 const points = Math.max(labels.length, 1);
-                canvasWrapper.style.minWidth = Math.max(960, points * 70) + 'px';
+                // Cap the width to prevent browser WebGL context crash (max 16384px in Chrome)
+                const safeWidth = Math.min(Math.max(960, points * 70), 12000);
+                canvasWrapper.style.minWidth = safeWidth + 'px';
 
                 if (trendChart) {
                     trendChart.destroy();
@@ -654,7 +657,7 @@ if ($roomHistoryJson === false) {
             });
 
             drawRoom(roomSelect.value);
-        })();
+        });
 
         async function handleRoomAction(action, btnElement, roomLabel) {
             let originalContent = '';
