@@ -208,13 +208,13 @@ Open `http://localhost:8000` (or `http://localhost/iot-room-booking/`) — you s
 ![Timetable](./images/timetable.png)
 
 ### Booking Page
-![Booking](./images/booking.jpg)
+![Booking](./images/booking.png)
 
 ### My Booking
-![My Booking](./images/my-booking.jpg)
+![My Booking](./images/my-booking.png)
 
 ### Dashboard
-![Dashboard](./images/dashboard.jpg)
+![Dashboard](./images/dashboard.png)
 
 ---
 
