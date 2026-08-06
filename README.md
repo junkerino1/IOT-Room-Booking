@@ -238,8 +238,8 @@ Distributed under the **MIT License**. See `LICENSE` for more information.
 
 ## 13. Author
 
-**Junkerino** — [your-github](https://github.com/junkerino1) 
-**SamLeong123** - [your-github](https://github.com/samleong123) 
+**Junkerino** — [https://github.com/junkerino1] <br>
+**SamLeong123** — [https://github.com/samleong123]
 
 *Built as an IoT assignment for university coursework.*
 
