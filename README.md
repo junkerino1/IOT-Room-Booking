@@ -144,7 +144,7 @@ IOT-Room-Booking/
 ### Step 1 — Clone the repository
 
 ```bash
-git clone https://github.com/your-username/iot-room-booking.git
+git clone https://github.com/junkerino1/IOT-Room-Booking.git
 cd iot-room-booking
 ```
 
@@ -170,7 +170,7 @@ $conn = mysqli_connect('localhost', 'root', '', 'iot-booking');
 **Option A — PHP built-in server** (clean URLs need the router script):
 
 ```bash
-php -S localhost:8000 index.php
+php -S localhost:3000 index.php
 ```
 
 **Option B — Apache / XAMPP**
@@ -180,7 +180,7 @@ php -S localhost:8000 index.php
 
 ### Step 5 — Verify
 
-Open `http://localhost:8000` (or `http://localhost/iot-room-booking/`) — you should be redirected to the login page.
+Open `http://localhost:3000` — you should be redirected to the login page.
 
 ### Seeded test account
 
@@ -238,7 +238,8 @@ Distributed under the **MIT License**. See `LICENSE` for more information.
 
 ## 13. Author
 
-**Your Name** — [your-github](https://github.com/your-username) · [your-email@example.com](mailto:your-email@example.com)
+**Junkerino** — [your-github](https://github.com/junkerino1) 
+**SamLeong123** - [your-github](https://github.com/samleong123) 
 
 *Built as an IoT assignment for university coursework.*
 
